@@ -167,8 +167,8 @@
       document.getElementById('finalProposal').innerText = currentSession.finalProposal || 'ここに生成結果が表示されます。';
     }
 
-    // 利用するモデル一覧（安定性の高い標準モデル順）
-    const MODELS_TO_TRY = ['gemini-2.0-flash', 'gemini-1.5-flash'];
+    // 指定された最新モデルを使用
+    const MODELS_TO_TRY = ['gemini-3.8-flash'];
 
     // 一括生成処理
     async function generateProposal() {
