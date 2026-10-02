@@ -54,6 +54,28 @@
           <textarea id="goal" class="w-full border p-2 rounded text-sm h-20" placeholder="例: 無意識の偏見に気づき、明日からのコミュニケーションで意識すべき1つの行動を決める"></textarea>
         </div>
 
+        <!-- ★ 追加: ペルソナ選択チェックボックスグループ -->
+        <div class="border-t pt-3 space-y-2">
+          <label class="block text-xs font-bold text-slate-700">■ 分析参加ペルソナ選択</label>
+          <div class="space-y-1.5 text-xs text-slate-600">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" class="persona-checkbox accent-indigo-600" value="p1" checked> ① 肯定・魅力発掘
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" class="persona-checkbox accent-indigo-600" value="p2" checked> ② 問題点・リスク指摘
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" class="persona-checkbox accent-indigo-600" value="p3" checked> ③ 受講者目線
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" class="persona-checkbox accent-indigo-600" value="p4" checked> ④ ベテラン講師
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer pt-1 border-t border-slate-100 font-semibold text-indigo-900">
+              <input type="checkbox" class="persona-checkbox accent-indigo-600" value="p5"> ⑤ 自館ナレッジ・現場視点
+            </label>
+          </div>
+        </div>
+
         <button onclick="generateProposal()" id="generateBtn" class="w-full bg-indigo-600 text-white py-2.5 rounded font-bold hover:bg-indigo-700">
           多角分析＆構成案を一括生成
         </button>
@@ -105,12 +127,17 @@
 - 最後のまとめでは「明日からできる1つのアクション」を持ち帰らせる。
     `;
 
-    // ★ ペルソナ定義
+    // ★ ペルソナ定義（⑤の独自ナレッジを追加）
     const PERSONAS = [
       { id: 'p1', title: '① 肯定・魅力発掘', role: 'この企画の強みやユニークさ、受講者に響くポイントを肯定的に抽出する評価者。' },
       { id: 'p2', title: '② 問題点・リスク指摘', role: '時間配分の無理、内容の難解さ、離脱ポイントなどの懸念点を厳しく指摘するクリティカルな分析者。' },
       { id: 'p3', title: '③ 受講者目線', role: 'ターゲット受講者のリアルな気持ちになりきり、「本当に集中が持つか」「難しくないか」「どう感じるか」を代弁する受講者。' },
-      { id: 'p4', title: '④ ベテラン講師', role: '豊富な登壇実績を持ち、具体的なワーク設計、進行のコツ、受講者を惹きつけるファシリテーションのアドバイスを行う専門家。' }
+      { id: 'p4', title: '④ ベテラン講師', role: '豊富な登壇実績を持ち、具体的なワーク設計、進行のコツ、受講者を惹きつけるファシリテーションのアドバイスを行う専門家。' },
+      { 
+        id: 'p5', 
+        title: '⑤ 自館ナレッジ・現場視点', 
+        role: '当センターでの過去のセミナー実績や参加者アンケートの傾向、地域・行政セミナーとしての妥当性や現場で躓きやすいポイントを重視してアドバイスする担当者視点。' 
+      }
     ];
 
     let currentSession = {
@@ -118,10 +145,42 @@
       personaResults: {}, finalProposal: '', chatHistory: []
     };
 
- // 一括生成処理（503混雑エラー対策＆日本語通知対応）
+    // 画面に分析結果・構成案を表示・レンダリングする関数
+    function renderResults() {
+      const outputDiv = document.getElementById('personaOutput');
+      outputDiv.innerHTML = '';
+
+      // 結果が存在するペルソナのみカード化して表示
+      Object.keys(currentSession.personaResults).forEach(pId => {
+        const persona = PERSONAS.find(p => p.id === pId);
+        if (!persona) return;
+
+        const card = document.createElement('div');
+        card.className = 'bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs space-y-1';
+        card.innerHTML = `
+          <h4 class="font-bold text-indigo-900 border-b pb-1">${persona.title}</h4>
+          <p class="text-slate-700 whitespace-pre-wrap leading-relaxed">${currentSession.personaResults[pId]}</p>
+        `;
+        outputDiv.appendChild(card);
+      });
+
+      document.getElementById('finalProposal').innerText = currentSession.finalProposal || 'ここに生成結果が表示されます。';
+    }
+
+    // 一括生成処理（ペルソナ選択連動・503混雑エラー対策＆日本語通知対応）
     async function generateProposal() {
       const apiKey = document.getElementById('apiKey').value.trim();
       if (!apiKey) return alert('API Keyを入力してください。');
+
+      // チェックされているペルソナの抽出
+      const selectedBoxes = document.querySelectorAll('.persona-checkbox:checked');
+      const selectedIds = Array.from(selectedBoxes).map(cb => cb.value);
+
+      if (selectedIds.length === 0) {
+        return alert('分析に参加させるペルソナを少なくとも1つ選択してください。');
+      }
+
+      const activePersonas = PERSONAS.filter(p => selectedIds.includes(p.id));
 
       const btn = document.getElementById('generateBtn');
       btn.disabled = true;
@@ -132,7 +191,8 @@
       currentSession.duration = document.getElementById('duration').value;
       currentSession.goal = document.getElementById('goal').value;
 
-      const personaPromptList = PERSONAS.map(p => `- ${p.title}:${p.role}`).join('\n');
+      const personaPromptList = activePersonas.map(p => `- ${p.id} (${p.title}):${p.role}`).join('\n');
+      const jsonPersonaStructure = activePersonas.map(p => `    "${p.id}": "${p.title}の分析内容..."`).join(',\n');
 
       const systemPrompt = `
 あなたは優秀な講義・セミナー設計スペシャリストです。
@@ -147,26 +207,23 @@ ${GOLDEN_RULES}
 - ゴール: ${currentSession.goal}
 
 【指示】
-1. 以下の4つの視点（ペルソナ）になりきり、それぞれ200文字程度で多角的分析・アドバイスを行ってください。
+1. 以下の選択された視点（ペルソナ）になりきり、それぞれ150〜200文字程度で多角的分析・アドバイスを行ってください。
 ${personaPromptList}
 
-2. 上記の4つの視点を統合し、【黄金ルール】を満たした「講義構成案（70%完成版）」を出力してください。時間配分、セクションごとの目的、ワーク概要を含めてください。
+2. 上記の選択された視点を統合し、【黄金ルール】を満たした「講義構成案（70%完成版）」を出力してください。時間配分、セクションごとの目的、ワーク概要を含めてください。
 
 【重要：出力形式について】
 必ず以下の構造の純粋なJSONオブジェクトのみを出力してください（Markdownの\`\`\`json などの装飾コードブロックも含めないでください）。
 
 {
   "personas": {
-    "p1": "肯定・魅力の分析内容...",
-    "p2": "問題点・リスクの分析内容...",
-    "p3": "受講者目線の分析内容...",
-    "p4": "ベテラン講師の分析内容..."
+${jsonPersonaStructure}
   },
   "proposal": "統合構成案（Markdownテキスト）..."
 }
       `;
 
-      const modelsToTry = ['gemini-3.8-flash'];
+      const modelsToTry = ['gemini-2.5-flash'];
       let lastErrorMsg = '';
       let parsedData = null;
 
@@ -228,7 +285,7 @@ ${personaPromptList}
       renderResults();
     }
 
-    // チャット送信機能（503日本語化対応）
+    // チャット送信機能（503日本語化対応＆URL修正）
     async function sendChatMessage() {
       const apiKey = document.getElementById('apiKey').value.trim();
       const input = document.getElementById('chatInput');
@@ -242,7 +299,7 @@ ${personaPromptList}
       const prompt = `現在の構成案:\n${currentSession.finalProposal}\n\nユーザーの要望: ${message}\n上記の要望を反映して構成案を修正・アドバイスしてください。`;
 
       try {
-        const response = await fetch(`[https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=$](https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=$){apiKey}`, {
+        const response = await fetch(`[https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$](https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$){apiKey}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
