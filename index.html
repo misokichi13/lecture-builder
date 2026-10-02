@@ -167,8 +167,49 @@
       document.getElementById('finalProposal').innerText = currentSession.finalProposal || 'ここに生成結果が表示されます。';
     }
 
-    // 指定された最新モデルを使用
-    const MODELS_TO_TRY = ['gemini-3.8-flash'];
+    // 最新モデルを使用
+    const MODEL_NAME = 'gemini-3.8-flash';
+
+    // APIを呼び出す関数（自動リトライ付き）
+    async function fetchWithRetry(apiKey, promptText, maxAttempts = 4) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${apiKey}`;
+      
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: promptText }] }]
+            })
+          });
+
+          const data = await response.json();
+
+          if (data.error) {
+            // 503混雑エラー、またはリクエスト過多(429)の場合のみ再試行
+            if (data.error.code === 503 || response.status === 503 || data.error.code === 429) {
+              const waitTime = attempt * 3000; // 3秒、6秒、9秒... と徐々に待機時間を延ばす
+              const btn = document.getElementById('generateBtn');
+              if (btn) btn.innerText = `混雑中... 再試行(${attempt}/${maxAttempts})${waitTime/1000}秒待機`;
+              await new Promise(r => setTimeout(r, waitTime));
+              continue;
+            }
+            throw new Error(`APIエラー [${data.error.code}]:${data.error.message}`);
+          }
+
+          if (data.candidates && data.candidates.length > 0) {
+            return data.candidates[0].content.parts[0].text.trim();
+          }
+          throw new Error('AIからの回答が取得できませんでした。');
+
+        } catch (err) {
+          if (attempt === maxAttempts) throw err;
+          await new Promise(r => setTimeout(r, 2000));
+        }
+      }
+      throw new Error('サーバー混雑が続いています。時間を置いて再度お試しください。');
+    }
 
     // 一括生成処理
     async function generateProposal() {
@@ -207,7 +248,7 @@ ${GOLDEN_RULES}
 - ゴール: ${currentSession.goal}
 
 【指示】
-1. 以下の視点（ペルソナ）になりきり、それぞれ150〜200文字程度で多角的分析・アドバイスを行ってください。
+1. 以下の視点（ペルソナ）になりきり、それぞれ100〜150文字程度で簡潔に分析・アドバイスを行ってください。
 ${personaPromptList}
 
 2. 上記の視点を統合し、【黄金ルール】を満たした「講義構成案（70%完成版）」を出力してください。時間配分、セクションごとの目的、ワーク概要を含めてください。
@@ -223,64 +264,21 @@ ${jsonPersonaStructure}
 }
       `;
 
-      let lastErrorMsg = '';
-      let parsedData = null;
+      try {
+        const rawText = await fetchWithRetry(apiKey, systemPrompt);
+        const cleanText = rawText.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '');
+        const parsedData = JSON.parse(cleanText);
 
-      for (const model of MODELS_TO_TRY) {
-        for (let attempt = 1; attempt <= 2; attempt++) {
-          try {
-            if (attempt > 1) {
-              btn.innerText = 'サーバー混雑のため再試行中...';
-              await new Promise(resolve => setTimeout(resolve, 1500));
-            }
+        currentSession.personaResults = parsedData.personas || {};
+        currentSession.finalProposal = parsedData.proposal || '';
+        renderResults();
 
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                contents: [{ parts: [{ text: systemPrompt }] }]
-              })
-            });
-
-            const data = await response.json();
-
-            if (data.error) {
-              if (data.error.code === 503 || response.status === 503) {
-                lastErrorMsg = '現在AIサーバーが大変混雑しています。数十秒ほど時間を置いてから、再度「一括生成」ボタンを押してください。';
-                continue;
-              }
-              throw new Error(`APIエラー [${data.error.code}]: ${data.error.message}`);
-            }
-
-            if (!data.candidates || data.candidates.length === 0) {
-              throw new Error('AIからの回答が取得できませんでした。');
-            }
-
-            let resultText = data.candidates[0].content.parts[0].text.trim();
-            resultText = resultText.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '');
-            
-            parsedData = JSON.parse(resultText);
-            break;
-
-          } catch (err) {
-            if (!lastErrorMsg) lastErrorMsg = err.message;
-            console.warn(`モデル ${model} 試行 ${attempt} でのエラー:`, err);
-          }
-        }
-        if (parsedData) break;
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerText = '多角分析＆構成案を一括生成';
       }
-
-      btn.disabled = false;
-      btn.innerText = '多角分析＆構成案を一括生成';
-
-      if (!parsedData) {
-        alert(lastErrorMsg || '生成に失敗しました。時間をおいて再度お試しください。');
-        return;
-      }
-
-      currentSession.personaResults = parsedData.personas || {};
-      currentSession.finalProposal = parsedData.proposal || '';
-      renderResults();
     }
 
     // チャット送信機能
@@ -296,37 +294,12 @@ ${jsonPersonaStructure}
 
       const prompt = `現在の構成案:\n${currentSession.finalProposal}\n\nユーザーの要望: ${message}\n上記の要望を反映して構成案を修正・アドバイスしてください。`;
 
-      let reply = '';
-      for (const model of MODELS_TO_TRY) {
-        try {
-          const response = await fetch(`[https://generativelanguage.googleapis.com/v1beta/models/$](https://generativelanguage.googleapis.com/v1beta/models/$){model}:generateContent?key=${apiKey}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: prompt }] }]
-            })
-          });
-
-          const data = await response.json();
-
-          if (data.error) {
-            continue;
-          }
-
-          if (data.candidates && data.candidates.length > 0) {
-            reply = data.candidates[0].content.parts[0].text;
-            break;
-          }
-        } catch (e) {
-          console.warn('チャット送信エラー:', e);
-        }
-      }
-
-      if (reply) {
+      try {
+        const reply = await fetchWithRetry(apiKey, prompt);
         historyDiv.innerHTML += `<div class="text-indigo-900"><strong>AI:</strong> ${reply}</div>`;
         historyDiv.scrollTop = historyDiv.scrollHeight;
-      } else {
-        alert('メッセージの送信に失敗しました。APIキーまたは接続状況を確認してください。');
+      } catch (e) {
+        alert('送信中にエラーが発生しました: ' + e.message);
       }
     }
 
