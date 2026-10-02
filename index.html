@@ -281,7 +281,7 @@ ${jsonPersonaStructure}
       }
     }
 
-    // チャット送信機能
+// チャット送信機能（自動リトライ＆エラー詳細表示付き）
     async function sendChatMessage() {
       const apiKey = document.getElementById('apiKey').value.trim();
       const input = document.getElementById('chatInput');
@@ -289,18 +289,54 @@ ${jsonPersonaStructure}
       if (!apiKey || !message) return;
 
       const historyDiv = document.getElementById('chatHistory');
-      historyDiv.innerHTML += `<div><strong>User:</strong> ${message}</div>`;
+      
+      // ユーザーの発言を表示
+      const userMsgDiv = document.createElement('div');
+      userMsgDiv.className = 'text-slate-800 font-medium';
+      userMsgDiv.innerHTML = `<strong>User:</strong> ${escapeHtml(message)}`;
+      historyDiv.appendChild(userMsgDiv);
+      
       input.value = '';
+      historyDiv.scrollTop = historyDiv.scrollHeight;
+
+      // 処理中表示
+      const loadingDiv = document.createElement('div');
+      loadingDiv.className = 'text-slate-400 italic text-xs';
+      loadingDiv.innerText = 'AIが考え中...';
+      historyDiv.appendChild(loadingDiv);
+      historyDiv.scrollTop = historyDiv.scrollHeight;
 
       const prompt = `現在の構成案:\n${currentSession.finalProposal}\n\nユーザーの要望: ${message}\n上記の要望を反映して構成案を修正・アドバイスしてください。`;
 
       try {
-        const reply = await fetchWithRetry(apiKey, prompt);
-        historyDiv.innerHTML += `<div class="text-indigo-900"><strong>AI:</strong> ${reply}</div>`;
-        historyDiv.scrollTop = historyDiv.scrollHeight;
+        // fetchWithRetry を使って混雑時も自動再試行する
+        const reply = await fetchWithRetry(apiKey, prompt, 4);
+        
+        loadingDiv.remove(); // ローディング消去
+        
+        const aiMsgDiv = document.createElement('div');
+        aiMsgDiv.className = 'text-indigo-900 bg-indigo-50/50 p-2 rounded border border-indigo-100 whitespace-pre-wrap';
+        aiMsgDiv.innerHTML = `<strong>AI:</strong>\n${escapeHtml(reply)}`;
+        historyDiv.appendChild(aiMsgDiv);
+        
+        // 履歴をセッションに保存
+        currentSession.chatHistory.push({ role: 'user', text: message });
+        currentSession.chatHistory.push({ role: 'ai', text: reply });
+
       } catch (e) {
-        alert('送信中にエラーが発生しました: ' + e.message);
+        loadingDiv.remove();
+        const errDiv = document.createElement('div');
+        errDiv.className = 'text-rose-600 bg-rose-50 p-2 rounded border border-rose-200 text-xs';
+        errDiv.innerHTML = `<strong>エラー:</strong> ${escapeHtml(e.message)}`;
+        historyDiv.appendChild(errDiv);
       }
+      
+      historyDiv.scrollTop = historyDiv.scrollHeight;
+    }
+
+    // エスケープ処理（安全のため）
+    function escapeHtml(str) {
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
     // JSON保存
