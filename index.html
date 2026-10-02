@@ -54,13 +54,13 @@
           <textarea id="goal" class="w-full border p-2 rounded text-sm h-20" placeholder="例: 無意識の偏見に気づき、明日からのコミュニケーションで意識すべき1つの行動を決める"></textarea>
         </div>
 
-        <!-- ★ 調整: ⑤のみ切り替え可能な分析オプション -->
+        <!-- ⑤のみ切り替え可能な分析オプション -->
         <div class="border-t pt-3 space-y-2">
           <label class="block text-xs font-bold text-slate-700">■ 分析ペルソナ設定</label>
           <div class="p-2.5 bg-slate-50 rounded-lg border border-slate-200 space-y-2 text-xs">
             <p class="text-slate-500 text-[11px]">※①〜④の基本ペルソナ（肯定/リスク/受講者/ベテラン）は常時適用されます。</p>
             <label class="flex items-center gap-2 cursor-pointer font-semibold text-indigo-900 pt-1 border-t border-slate-200">
-              <input type="checkbox" id="enableP5" class="w-4 h-4 accent-indigo-600 rounded cursor-pointer">
+              <input type="checkbox" id="enableP5" class="w-4 h-4 accent-indigo-600 rounded cursor-pointer" checked>
               ⑤ 武藤視点を含める
             </label>
           </div>
@@ -91,7 +91,7 @@
           <h3 class="font-bold text-slate-700 text-sm">3. 継続対話（構成案の修正・深掘り）</h3>
           <div id="chatHistory" class="max-h-40 overflow-y-auto space-y-2 text-sm bg-slate-50 p-3 rounded border"></div>
           <div class="flex gap-2">
-            <input type="text" id="chatInput" placeholder="例: ワークショップの時間を10分伸ばした構成にして" class="flex-1 border p-2 rounded text-sm">
+            <input type="text" id="chatInput" placeholder="例: ワークショップの時間を10分伸ばした構成にして" class="flex-1 border p-2 rounded text-sm" onkeydown="if(event.key==='Enter') sendChatMessage()">
             <button onclick="sendChatMessage()" class="bg-slate-800 text-white px-4 py-2 rounded text-sm hover:bg-slate-700">送信</button>
           </div>
         </div>
@@ -108,7 +108,7 @@
       alert('API Keyを保存しました。');
     }
 
-    // ★ ナレッジ継承・黄金ルール
+    // ナレッジ継承・黄金ルール
     const GOLDEN_RULES = `
 【講義づくりの黄金ルール】
 - 導入で受講者の「自分ごと化」を促す問いかけを必ず入れる。
@@ -117,7 +117,7 @@
 - 最後のまとめでは「明日からできる1つのアクション」を持ち帰らせる。
     `;
 
-    // ★ 定義済みペルソナリスト
+    // 定義済みペルソナリスト
     const BASE_PERSONAS = [
       { id: 'p1', title: '① 肯定・魅力発掘', role: 'この企画の強みやユニークさ、受講者に響くポイントを肯定的に抽出する評価者。' },
       { id: 'p2', title: '② 問題点・リスク指摘', role: '時間配分の無理、内容の難解さ、離脱ポイントなどの懸念点を厳しく指摘するクリティカルな分析者。' },
@@ -130,13 +130,13 @@
       title: '⑤ 武藤視点',
       role: `男女共同参画センターの現場担当者として検証します。単なる知識伝達やノウハウの提示で終わらせず、受講者が「社会の思い込み（ジェンダー規範）」に気づき、「自分ごと」として受け止められる構成になっているかを以下の現場知見に基づいて評価・助言してください。
 
-            【重視する検証ポイント】
-        1. 「個人」から「社会の構造」への接続：
-           個人の捉え方や事例に留めず、「なぜそう思うのか？どんな社会の思い込みが隠れているか？」という本質・背景（構造）へ戻す解説・問いかけの仕掛けがあるか。受講者を責めず「誰もが社会の影響を受けている」という共感ベースの配慮がされているか。
-        2. 飽きさせない90分構成（30分講義/30分ワーク/30分解説・まとめ 等）：
-           座学が長くなって集中が切れないよう、講義の合間に適切なタイミングでワークが挟み込まれ、展開にリズムがあるか。
-        3. 萎縮させないワーク設計：
-           正解を求めるのではなく「どう感じるか」というオープンなお題になっているか。発表のハードルが高すぎず、出た意見を肯定的に受け止めながら全体へ話を広げられる工夫（マイクフォローや問い直しの余白）があるか。`
+【重視する検証ポイント】
+1. 「個人」から「社会の構造」への接続：
+   個人の捉え方や事例に留めず、「なぜそう思うのか？どんな社会の思い込みが隠れているか？」という本質・背景（構造）へ戻す解説・問いかけの仕掛けがあるか。受講者を責めず「誰もが社会の影響を受けている」という共感ベースの配慮がされているか。
+2. 飽きさせない90分構成（30分講義/30分ワーク/30分解説・まとめ 等）：
+   座学が長くなって集中が切れないよう、講義の合間に適切なタイミングでワークが挟み込まれ、展開にリズムがあるか。
+3. 萎縮させないワーク設計：
+   正解を求めるのではなく「どう感じるか」というオープンなお題になっているか。発表のハードルが高すぎず、出た意見を肯定的に受け止めながら全体へ話を広げられる工夫（マイクフォローや問い直しの余白）があるか。`
     };
 
     let currentSession = {
@@ -166,6 +166,9 @@
 
       document.getElementById('finalProposal').innerText = currentSession.finalProposal || 'ここに生成結果が表示されます。';
     }
+
+    // 利用するモデル一覧（安定性の高い標準モデル順）
+    const MODELS_TO_TRY = ['gemini-2.0-flash', 'gemini-1.5-flash'];
 
     // 一括生成処理
     async function generateProposal() {
@@ -220,16 +223,15 @@ ${jsonPersonaStructure}
 }
       `;
 
-      const modelsToTry = ['gemini-2.5-flash'];
       let lastErrorMsg = '';
       let parsedData = null;
 
-      for (const model of modelsToTry) {
+      for (const model of MODELS_TO_TRY) {
         for (let attempt = 1; attempt <= 2; attempt++) {
           try {
             if (attempt > 1) {
               btn.innerText = 'サーバー混雑のため再試行中...';
-              await new Promise(resolve => setTimeout(resolve, 2000));
+              await new Promise(resolve => setTimeout(resolve, 1500));
             }
 
             const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
@@ -262,7 +264,7 @@ ${jsonPersonaStructure}
 
           } catch (err) {
             if (!lastErrorMsg) lastErrorMsg = err.message;
-            console.warn(`試行 ${attempt} でのエラー:`, err);
+            console.warn(`モデル ${model} 試行 ${attempt} でのエラー:`, err);
           }
         }
         if (parsedData) break;
@@ -294,30 +296,37 @@ ${jsonPersonaStructure}
 
       const prompt = `現在の構成案:\n${currentSession.finalProposal}\n\nユーザーの要望: ${message}\n上記の要望を反映して構成案を修正・アドバイスしてください。`;
 
-      try {
-        const response = await fetch(`[https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$](https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$){apiKey}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }]
-          })
-        });
+      let reply = '';
+      for (const model of MODELS_TO_TRY) {
+        try {
+          const response = await fetch(`[https://generativelanguage.googleapis.com/v1beta/models/$](https://generativelanguage.googleapis.com/v1beta/models/$){model}:generateContent?key=${apiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }]
+            })
+          });
 
-        const data = await response.json();
+          const data = await response.json();
 
-        if (data.error) {
-          if (data.error.code === 503 || response.status === 503) {
-            alert('現在AIサーバーが混雑しています。少し時間を置いてから再度メッセージを送信してください。');
-            return;
+          if (data.error) {
+            continue;
           }
-          throw new Error(`[${data.error.code}]: ${data.error.message}`);
-        }
 
-        const reply = data.candidates[0].content.parts[0].text;
+          if (data.candidates && data.candidates.length > 0) {
+            reply = data.candidates[0].content.parts[0].text;
+            break;
+          }
+        } catch (e) {
+          console.warn('チャット送信エラー:', e);
+        }
+      }
+
+      if (reply) {
         historyDiv.innerHTML += `<div class="text-indigo-900"><strong>AI:</strong> ${reply}</div>`;
         historyDiv.scrollTop = historyDiv.scrollHeight;
-      } catch (e) {
-        alert('送信中にエラーが発生しました: ' + e.message);
+      } else {
+        alert('メッセージの送信に失敗しました。APIキーまたは接続状況を確認してください。');
       }
     }
 
