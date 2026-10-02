@@ -96,7 +96,7 @@
       alert('API Keyを保存しました。');
     }
 
-    // ★ ナレッジ継承・黄金ルール（組織の知見をここに埋め込み）
+    // ★ ナレッジ継承・黄金ルール
     const GOLDEN_RULES = `
 【講義づくりの黄金ルール】
 - 導入で受講者の「自分ごと化」を促す問いかけを必ず入れる。
@@ -105,7 +105,7 @@
 - 最後のまとめでは「明日からできる1つのアクション」を持ち帰らせる。
     `;
 
-    // ★ ペルソナ定義（配列で管理しているため、自由に追加・変更が可能）
+    // ★ ペルソナ定義
     const PERSONAS = [
       { id: 'p1', title: '① 肯定・魅力発掘', role: 'この企画の強みやユニークさ、受講者に響くポイントを肯定的に抽出する評価者。' },
       { id: 'p2', title: '② 問題点・リスク指摘', role: '時間配分の無理、内容の難解さ、離脱ポイントなどの懸念点を厳しく指摘するクリティカルな分析者。' },
@@ -118,7 +118,7 @@
       personaResults: {}, finalProposal: '', chatHistory: []
     };
 
-    // 一括生成処理（安定動作版）
+    // 一括生成処理
     async function generateProposal() {
       const apiKey = document.getElementById('apiKey').value.trim();
       if (!apiKey) return alert('API Keyを入力してください。');
@@ -166,15 +166,13 @@ ${personaPromptList}
 }
       `;
 
-      // Google AI Studioで確実に動作する標準モデルの優先順リスト
+      // 試行するモデル名の優先順位リスト（アナリティクスツール実績モデルを指定）
       const modelsToTry = [
-        'gemini-1.5-flash',
-        'gemini-1.5-pro',
-        'gemini-2.0-flash-exp'
+        'gemini-3.8-flash'
       ];
 
       let lastError = null;
-      let success = false;
+      let parsedData = null;
 
       for (const model of modelsToTry) {
         try {
@@ -198,5 +196,109 @@ ${personaPromptList}
 
           let resultText = data.candidates[0].content.parts[0].text.trim();
           
-          // JSON以外の余分なMarkdown枠などを除外するパース処理
-          resultText = resultText.replace(/^```json\s*/i, '').replace(/^
+          // クリーニング処理
+          resultText = resultText.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '');
+          
+          parsedData = JSON.parse(resultText);
+          break; // 成功したらループを抜ける
+
+        } catch (err) {
+          lastError = err;
+          console.warn(`モデル ${model} でのエラー:`, err);
+        }
+      }
+
+      btn.disabled = false;
+      btn.innerText = '多角分析＆構成案を一括生成';
+
+      if (!parsedData) {
+        alert('生成に失敗しました:\n' + (lastError ? lastError.message : '不明なエラー'));
+        return;
+      }
+
+      // 結果の描写
+      currentSession.personaResults = parsedData.personas || {};
+      currentSession.finalProposal = parsedData.proposal || '';
+      renderResults();
+    }
+
+    // 結果のUI反映
+    function renderResults() {
+      const container = document.getElementById('personaOutput');
+      container.innerHTML = '';
+
+      PERSONAS.forEach(p => {
+        const content = currentSession.personaResults[p.id] || '分析なし';
+        const card = document.createElement('div');
+        card.className = 'bg-slate-50 p-4 rounded-lg border border-slate-200 text-sm space-y-1';
+        card.innerHTML = `<h4 class="font-bold text-slate-800">${p.title}</h4><p class="text-slate-600 text-xs">${content}</p>`;
+        container.appendChild(card);
+      });
+
+      document.getElementById('finalProposal').innerText = currentSession.finalProposal;
+    }
+
+    // チャット送信機能
+    async function sendChatMessage() {
+      const apiKey = document.getElementById('apiKey').value.trim();
+      const input = document.getElementById('chatInput');
+      const message = input.value.trim();
+      if (!apiKey || !message) return;
+
+      const historyDiv = document.getElementById('chatHistory');
+      historyDiv.innerHTML += `<div><strong>User:</strong> ${message}</div>`;
+      input.value = '';
+
+      const prompt = `現在の構成案:\n${currentSession.finalProposal}\n\nユーザーの要望: ${message}\n上記の要望を反映して構成案を修正・アドバイスしてください。`;
+
+      try {
+        const response = await fetch(`[https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=$](https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=$){apiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }]
+          })
+        });
+
+        const data = await response.json();
+        const reply = data.candidates[0].content.parts[0].text;
+        historyDiv.innerHTML += `<div class="text-indigo-900"><strong>AI:</strong> ${reply}</div>`;
+        historyDiv.scrollTop = historyDiv.scrollHeight;
+      } catch (e) {
+        alert('チャット送信中にエラーが発生しました: ' + e.message);
+      }
+    }
+
+    // JSON保存（エクスポート）
+    function exportData() {
+      const blob = new Blob([JSON.stringify(currentSession, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `lecture_plan_${new Date().toISOString().slice(0,10)}.json`;
+      a.click();
+    }
+
+    // JSON読込（インポート）
+    function importData(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          currentSession = JSON.parse(e.target.result);
+          document.getElementById('theme').value = currentSession.theme || '';
+          document.getElementById('target').value = currentSession.target || '';
+          document.getElementById('duration').value = currentSession.duration || '';
+          document.getElementById('goal').value = currentSession.goal || '';
+          renderResults();
+          alert('データを読み込みました。');
+        } catch (err) {
+          alert('JSONファイルの読み込みに失敗しました。');
+        }
+      };
+      reader.readAsText(file);
+    }
+  </script>
+</body>
+</html>
