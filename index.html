@@ -118,7 +118,7 @@
       personaResults: {}, finalProposal: '', chatHistory: []
     };
 
-// 一括生成処理（エラーハンドリング強化版）
+// 一括生成処理（モデルエラー完全回避＆フォールバック対応版）
     async function generateProposal() {
       const apiKey = document.getElementById('apiKey').value.trim();
       if (!apiKey) return alert('API Keyを入力してください。');
@@ -165,42 +165,59 @@ ${personaPromptList}
 }
       `;
 
-      try {
-        // 無料で利用可能な標準モデル gemini-1.5-flash に変更
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: systemPrompt }] }],
-            generationConfig: { responseMimeType: "application/json" }
-          })
-        });
+      // 試行するモデル候補の優先順位リスト
+      const modelsToTry = [
+        'gemini-2.5-flash',
+        'gemini-1.5-flash-latest',
+        'gemini-pro'
+      ];
 
-        const data = await response.json();
+      let lastError = null;
+      let success = false;
 
-        // APIからのエラーレスポンスをチェック
-        if (data.error) {
-          throw new Error(`APIエラー [${data.error.code}]: ${data.error.message}`);
+      for (const model of modelsToTry) {
+        try {
+          const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: systemPrompt }] }],
+              generationConfig: { responseMimeType: "application/json" }
+            })
+          });
+
+          const data = await response.json();
+
+          if (data.error) {
+            throw new Error(`APIエラー [${data.error.code}]: ${data.error.message}`);
+          }
+
+          if (!data.candidates || data.candidates.length === 0) {
+            throw new Error('AIからの回答が取得できませんでした。');
+          }
+
+          const resultText = data.candidates[0].content.parts[0].text;
+          const parsed = JSON.parse(resultText);
+
+          currentSession.personaResults = parsed.personas;
+          currentSession.finalProposal = parsed.proposal;
+
+          renderResults();
+          success = true;
+          break; // 成功したためループを抜ける
+        } catch (err) {
+          console.warn(`モデル ${model} でのエラー:`, err.message);
+          lastError = err;
+          // 404などモデル起因のエラーの場合は次のモデルで再試行
         }
-
-        if (!data.candidates || data.candidates.length === 0) {
-          throw new Error('AIからの回答が取得できませんでした（安全フィルターやコンテンツブロックの可能性があります）。');
-        }
-
-        const resultText = data.candidates[0].content.parts[0].text;
-        const parsed = JSON.parse(resultText);
-
-        currentSession.personaResults = parsed.personas;
-        currentSession.finalProposal = parsed.proposal;
-
-        renderResults();
-      } catch (err) {
-        alert('生成エラー: ' + err.message);
-        console.error(err);
-      } finally {
-        btn.disabled = false;
-        btn.innerText = '多角分析＆構成案を一括生成';
       }
+
+      if (!success) {
+        alert('生成エラー: ' + (lastError ? lastError.message : 'モデルの呼び出しに失敗しました。'));
+      }
+
+      btn.disabled = false;
+      btn.innerText = '多角分析＆構成案を一括生成';
     }
 
     // 画面描写
@@ -221,9 +238,9 @@ ${personaPromptList}
       document.getElementById('finalProposal').innerText = currentSession.finalProposal || '未生成';
     }
 
-    // チャット機能
-    async function sendChatMessage() {
-      const apiKey = document.getElementById('apiKey').value;
+    // チャット機能（安定版）
+      async function sendChatMessage() {
+      const apiKey = document.getElementById('apiKey').value.trim();
       const input = document.getElementById('chatInput');
       const text = input.value.trim();
       if (!text || !apiKey) return;
@@ -235,12 +252,17 @@ ${personaPromptList}
       const prompt = `現在の構成案:\n${currentSession.finalProposal}\n\nユーザーの要望: ${text}\n上記を踏まえて回答・更新案を提示してください。`;
 
       try {
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
         });
         const data = await response.json();
+        
+        if (data.error) {
+          throw new Error(data.error.message);
+        }
+
         const reply = data.candidates[0].content.parts[0].text;
         currentSession.chatHistory.push({ role: 'model', text: reply });
         renderChat();
@@ -248,7 +270,6 @@ ${personaPromptList}
         alert('エラー: ' + e.message);
       }
     }
-
     function renderChat() {
       const historyDiv = document.getElementById('chatHistory');
       historyDiv.innerHTML = currentSession.chatHistory.map(h => `
